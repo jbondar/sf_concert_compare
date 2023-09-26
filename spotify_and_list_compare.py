@@ -180,6 +180,3 @@ if __name__ == "__main__":
         write_to_excel(common_artists)
     else:
         print("No common artists found.")
-
-else:
-    print("No valid page numbers found on the website.")
