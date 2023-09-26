@@ -70,7 +70,6 @@ def get_artist_events_from_url(url: str) -> List[Tuple[str, str, str]]:
     return events
 
 
-# Function to get all artists from Spotify
 def get_all_spotify_artists() -> List[str]:
     """Function to get all artists from Spotify"""
     artists = set()  # Use a set to avoid duplicates
@@ -142,6 +141,7 @@ def compare_artists(html_artists_data: List[Tuple[str, str, str]], spotify_artis
     return common_artists_data
 
 def write_to_excel(data: List[Tuple[str, str, str]], filename: str = "common_artists.xlsx"):
+  """Write the compared list to excel"""
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "Common Artists"
