@@ -54,7 +54,7 @@ def get_artist_events_from_url(url: str) -> List[Tuple[str, str, str]]:
                 if b_tag:
                     # Splitting date text into weekday and day
                     weekday, day = b_tag.get_text(strip=True, separator=' ').split(' ')
-                    # Constructing the date string as per your format
+                    # Constructing the date string
                     formatted_date = f"{weekday} {month} {day}"
                     date = formatted_date
             bands_td = tr.find('td', {'bgcolor': '#CCCCCC'})
