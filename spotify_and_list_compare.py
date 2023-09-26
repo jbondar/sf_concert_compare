@@ -141,7 +141,9 @@ def compare_artists(html_artists_data: List[Tuple[str, str, str]], spotify_artis
     return common_artists_data
 
 def write_to_excel(data: List[Tuple[str, str, str]], filename: str = "common_artists.xlsx"):
-  """Write the compared list to excel"""
+    """
+    Write the compared list to excel
+    """
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "Common Artists"
