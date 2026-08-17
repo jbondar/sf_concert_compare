@@ -1,0 +1,33 @@
+# Secrets -- never commit these.
+.env
+.env.*
+!.env.example
+.cache
+.cache-*
+*.pem
+
+# Spotify data exports (they contain your full listening history)
+Streaming_History*.json
+endsong*.json
+StreamingHistory*.json
+my_spotify_data*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Output
+*.xlsx
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
