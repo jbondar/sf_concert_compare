@@ -9,6 +9,33 @@ import os
 import secrets
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
+
+
+def _load_dotenv() -> None:
+    """Read .env into the environment if it exists.
+
+    Hand-rolled rather than pulling in python-dotenv: the file is ours, the
+    format is KEY=VALUE, and real environment variables always win so Docker
+    and shell exports keep overriding it.
+    """
+    path = Path(__file__).resolve().parent.parent / ".env"
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv()
 
 
 def _flag(name: str, default: bool = False) -> bool:
