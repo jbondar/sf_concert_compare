@@ -27,7 +27,7 @@ from datetime import date
 from typing import Dict, Iterable, List, Optional, Sequence
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 BASE_URL = "http://www.foopee.com/punk/the-list/"
 USER_AGENT = (
@@ -198,13 +198,18 @@ def _parse_page(html: str, year_hint: int, last_month: Optional[int]) -> tuple:
         if not bands:
             continue
 
-        # Everything after the final anchor is the price/age/time tail.
-        tail = ""
+        # Everything after the final anchor is the price/age/time tail. Read
+        # the text straight off the siblings rather than re-parsing it: the
+        # tail is plain text, and handing it back to BeautifulSoup makes it
+        # warn that a short string looks like a filename.
+        tail_parts: List[str] = []
         if anchors:
-            tail = "".join(
-                str(sibling) for sibling in anchors[-1].next_siblings
-            )
-        details = _split_details(BeautifulSoup(tail, "html.parser").get_text(" "))
+            for sibling in anchors[-1].next_siblings:
+                if isinstance(sibling, NavigableString):
+                    tail_parts.append(str(sibling))
+                else:
+                    tail_parts.append(sibling.get_text(" "))
+        details = _split_details(" ".join(tail_parts))
 
         for band in bands:
             shows.append(
