@@ -127,21 +127,16 @@ step. Two things have to line up:
    the browser: the `<base>` tag in the page and the OAuth redirects. Every
    other URL in the frontend is relative and resolves against that tag.
 
-Ready-made config is in [`deploy/`](deploy/):
+Ready-made config for both common proxies is in [`deploy/`](deploy/):
 
-```bash
-# 1. App on loopback, managed by systemd
-sudo cp deploy/sfconcert.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now sfconcert
+- **[`traefik-sfconcert.yml`](deploy/traefik-sfconcert.yml)** — a compose
+  service with the router labels and a `stripprefix` middleware. Traefik does
+  not buffer responses, so SSE works with no extra configuration.
+- **[`apache-sfconcert.conf`](deploy/apache-sfconcert.conf)** +
+  **[`sfconcert.service`](deploy/sfconcert.service)** — a `ProxyPass` block and
+  a systemd unit, for running the app directly on the host instead.
 
-# 2. Apache in front
-sudo a2enmod proxy proxy_http headers
-sudo cp deploy/apache-sfconcert.conf /etc/apache2/conf-available/
-# ...then Include it from the site's <VirtualHost *:443>
-sudo systemctl reload apache2
-```
-
-The matching `.env` on the server:
+The matching environment either way:
 
 ```bash
 BASE_PATH=/sfconcert
@@ -152,13 +147,18 @@ SESSION_SECRET=<a real one, or restarts sign everyone out>
 
 Add that same redirect URI to the Spotify dashboard — it must match exactly.
 
-Two things bite here, and both are handled in the supplied config:
+Three things bite here, and the supplied configs handle all of them:
 
 - **SSE buffering.** Scan progress is a long-lived `text/event-stream`. Apache
   needs `flushpackets=on` and gzip off, or the UI sits silent until the whole
-  scan finishes. `ProxyTimeout` also has to exceed a full scan.
-- **The trailing slash.** `/sfconcert` without one resolves relative URLs
-  against `/`, so the page loads with no CSS. The config 301s it.
+  scan finishes, and `ProxyTimeout` has to exceed a full scan. Traefik streams
+  by default.
+- **Router priority.** If another router already serves the same hostname,
+  Traefik's default length-based ranking may hand it `/sfconcert` anyway. The
+  subpath router needs an explicit, higher `priority`.
+- **The trailing slash.** Nothing here depends on it: the `<base>` tag is
+  absolute, so `/sfconcert` and `/sfconcert/` both resolve assets correctly.
+  The Apache config still 301s to the slash for tidiness.
 
 ---
 

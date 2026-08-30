@@ -1,0 +1,46 @@
+# Compose service for mounting the app at https://<host>/sfconcert behind
+# Traefik. Drop this into an existing stack that already has Traefik on an
+# external `proxy_net` with a `websecure` entrypoint.
+#
+# This is the arrangement actually in use. deploy/apache-sfconcert.conf covers
+# the same idea for an Apache reverse proxy instead.
+
+services:
+  sfconcert:
+    build:
+      context: ${SFCONCERT_DIR}
+    image: sf-concert-compare:local
+    container_name: sfconcert
+    restart: unless-stopped
+    environment:
+      # Traefik strips /sfconcert before forwarding, so the app's own routes
+      # stay unprefixed. BASE_PATH is how it adds the prefix back onto the
+      # URLs it hands the browser.
+      - BASE_PATH=/sfconcert
+      - COOKIE_SECURE=true
+      - SPOTIFY_REDIRECT_URI=https://example.com/sfconcert/callback
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SESSION_SECRET=${SFCONCERT_SESSION_SECRET:-}
+      - LASTFM_API_KEY=${LASTFM_API_KEY:-}
+    networks:
+      - proxy_net
+    labels:
+      - "traefik.enable=true"
+      # Explicit priority matters. Traefik ranks routers by rule length by
+      # default, so a broader `Host(...)` router for the same domain can be
+      # *longer* than this one and keep winning /sfconcert -- serving its own
+      # 404 while this container sits idle.
+      - "traefik.http.routers.sfconcert.priority=1000"
+      - "traefik.http.routers.sfconcert.rule=Host(`example.com`) && PathPrefix(`/sfconcert`)"
+      - "traefik.http.routers.sfconcert.entrypoints=websecure"
+      - "traefik.http.routers.sfconcert.tls=true"
+      - "traefik.http.routers.sfconcert.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.sfconcert.middlewares=sfconcert-strip"
+      - "traefik.http.middlewares.sfconcert-strip.stripprefix.prefixes=/sfconcert"
+      - "traefik.http.services.sfconcert.loadbalancer.server.port=8000"
+
+networks:
+  proxy_net:
+    name: proxy_net
+    external: true
