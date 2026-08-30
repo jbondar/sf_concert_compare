@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SF Concert Compare</title>
+  <meta name="description" content="Cross-reference the artists you listen to on Spotify against The List, the Bay Area concert guide." />
+  <!-- The server rewrites the placeholder below to this deploy's prefix: empty
+       at a domain root, "/sfconcert" behind the proxy. Every other URL in this
+       page and in app.js is relative, and resolves against it. -->
+  <base href="__BASE__/" />
+  <link rel="stylesheet" href="static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎸</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="./">
+        <span class="brand-mark">◼</span>
+        <span class="brand-text">SF Concert<em>Compare</em></span>
+      </a>
+      <div class="topbar-right">
+        <a class="ghost-link" href="http://www.foopee.com/punk/the-list/" target="_blank" rel="noopener">The List ↗</a>
+        <div id="account"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- Landing / sign-in -->
+    <section id="landing" class="hidden">
+      <div class="hero">
+        <h1>Which bands you actually listen to<br /><span class="hl">are playing the Bay Area?</span></h1>
+        <p class="lede">
+          Sign in with Spotify. We read the artists in your account, pull every show from
+          <a href="http://www.foopee.com/punk/the-list/" target="_blank" rel="noopener">The&nbsp;List</a>
+          &mdash; Steve Koepke's Bay Area concert guide, running since 1995 &mdash; and show you the overlap.
+        </p>
+        <div id="signin-box">
+          <a class="btn btn-spotify" href="login">
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0m5.5 17.3c-.22.36-.68.48-1.03.26-2.83-1.73-6.4-2.12-10.6-1.16a.75.75 0 0 1-.33-1.46c4.6-1.05 8.55-.6 11.72 1.33.35.22.46.68.24 1.03m1.47-3.27a.94.94 0 0 1-1.29.31c-3.24-1.99-8.18-2.57-12.01-1.4a.94.94 0 1 1-.55-1.8c4.38-1.33 9.82-.69 13.54 1.6.44.27.58.85.31 1.29m.13-3.4C15.22 8.32 8.9 8.11 5.19 9.24a1.12 1.12 0 1 1-.65-2.15C8.8 5.8 15.78 6.05 20.13 8.63a1.12 1.12 0 1 1-1.14 1.93"/></svg>
+            Sign in with Spotify
+          </a>
+          <p class="fineprint">Read-only access. Nothing is written to your account and nothing is stored on a server.</p>
+        </div>
+        <div id="setup-warning" class="notice notice-warn hidden">
+          <strong>Not configured yet.</strong>
+          Set <code>SPOTIFY_CLIENT_ID</code> and <code>SPOTIFY_CLIENT_SECRET</code>, then restart.
+          See the README for the two-minute version.
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h3>Direct matches</h3>
+          <p>Bands on The List that are already in your Spotify &mdash; top artists, follows, saved tracks and albums, recent plays, and your playlists.</p>
+        </div>
+        <div class="card">
+          <h3>Adjacent artists <span class="pill pill-adj">optional</span></h3>
+          <p>Bands you <em>haven't</em> listened to but that sit next to your taste. Off by default, and always kept in its own section.</p>
+        </div>
+        <div class="card">
+          <h3>Your whole history</h3>
+          <p>Spotify's API only exposes a slice of your listening. Drop in a Spotify data export for true lifetime coverage.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Signed in -->
+    <section id="app" class="hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Scan</h2>
+          <div id="list-meta" class="meta"></div>
+        </div>
+        <div class="controls">
+          <label class="check">
+            <input type="checkbox" id="opt-playlists" checked />
+            <span>Include my playlists <em>(slower, much better coverage)</em></span>
+          </label>
+          <button id="btn-scan" class="btn btn-primary">Compare against The List</button>
+        </div>
+
+        <details class="advanced">
+          <summary>Add your full listening history <span class="pill">optional</span></summary>
+          <p class="muted">
+            Spotify's API can't return everything you've ever played. For that, request your
+            <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">data export</a>
+            (Account &rarr; Privacy &rarr; Extended streaming history), then drop the
+            <code>Streaming_History_*.json</code> files here. They're parsed in memory and discarded.
+          </p>
+          <input type="file" id="history-files" multiple accept=".json,application/json" />
+          <div id="history-status" class="muted"></div>
+        </details>
+
+        <div id="progress" class="progress hidden">
+          <div class="bar"><div class="bar-fill"></div></div>
+          <div id="progress-text" class="progress-text"></div>
+        </div>
+        <div id="error" class="notice notice-error hidden"></div>
+      </div>
+
+      <!-- Results -->
+      <div id="results" class="hidden">
+        <div class="stats" id="stats"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Your bands, playing near you</h2>
+            <span id="match-count" class="meta"></span>
+          </div>
+          <div class="filters">
+            <input type="search" id="filter-text" placeholder="Filter by band or venue&hellip;" />
+            <select id="filter-window">
+              <option value="0">All dates</option>
+              <option value="7">Next 7 days</option>
+              <option value="30" selected>Next 30 days</option>
+              <option value="90">Next 90 days</option>
+            </select>
+            <select id="filter-tier">
+              <option value="0" selected>Any familiarity</option>
+              <option value="15">Familiar or better</option>
+              <option value="40">Regulars &amp; favorites</option>
+              <option value="70">Favorites only</option>
+            </select>
+            <select id="sort-by">
+              <option value="date" selected>Sort by date</option>
+              <option value="affinity">Sort by how well you know them</option>
+            </select>
+            <label class="check"><input type="checkbox" id="filter-soldout" /><span>Hide sold out</span></label>
+          </div>
+          <div id="match-list" class="shows"></div>
+          <div id="match-empty" class="empty hidden"></div>
+        </div>
+
+        <!-- Adjacent: deliberately its own panel, visually distinct -->
+        <div class="panel panel-adjacent">
+          <div class="panel-head">
+            <div>
+              <h2>Adjacent artists <span class="pill pill-adj">not in your library</span></h2>
+              <p class="panel-sub">
+                Guesses, not matches. These are bands you have <strong>never listened to</strong>,
+                surfaced because they sit close to artists you do listen to.
+              </p>
+            </div>
+          </div>
+          <div class="controls">
+            <select id="adj-provider">
+              <option value="auto" selected>Best available</option>
+              <option value="genre">Spotify genres</option>
+              <option value="lastfm">Last.fm similarity</option>
+            </select>
+            <select id="adj-days">
+              <option value="30">Next 30 days</option>
+              <option value="60" selected>Next 60 days</option>
+              <option value="120">Next 120 days</option>
+            </select>
+            <button id="btn-adjacent" class="btn btn-outline">Find adjacent artists</button>
+          </div>
+          <div id="adj-progress" class="progress hidden">
+            <div class="bar"><div class="bar-fill"></div></div>
+            <div id="adj-progress-text" class="progress-text"></div>
+          </div>
+          <div id="adj-error" class="notice notice-error hidden"></div>
+          <div id="adj-list" class="shows"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>
+      Show data from <a href="http://www.foopee.com/punk/the-list/" target="_blank" rel="noopener">The List</a>,
+      compiled by Steve Koepke and HTMLized by Graham Spencer. This tool is not affiliated with either, or with Spotify.
+    </p>
+  </footer>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

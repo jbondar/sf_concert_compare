@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Put the repo root on sys.path so `pytest` works the same as
+# `python -m pytest` -- without this, bare `pytest` cannot import `app`.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
