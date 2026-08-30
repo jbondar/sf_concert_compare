@@ -24,4 +24,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # One worker on purpose: scan results are held in process memory, keyed by
 # session. Scale out only after moving that state to a shared store.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+#
+# --proxy-headers so X-Forwarded-Proto from a reverse proxy is honoured, which
+# is what keeps redirects on https instead of downgrading to http.
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "1", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

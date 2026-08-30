@@ -5,13 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SF Concert Compare</title>
   <meta name="description" content="Cross-reference the artists you listen to on Spotify against The List, the Bay Area concert guide." />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <!-- The server rewrites the placeholder below to this deploy's prefix: empty
+       at a domain root, "/sfconcert" behind the proxy. Every other URL in this
+       page and in app.js is relative, and resolves against it. -->
+  <base href="__BASE__/" />
+  <link rel="stylesheet" href="static/styles.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎸</text></svg>" />
 </head>
 <body>
   <header class="topbar">
     <div class="wrap topbar-inner">
-      <a class="brand" href="/">
+      <a class="brand" href="./">
         <span class="brand-mark">◼</span>
         <span class="brand-text">SF Concert<em>Compare</em></span>
       </a>
@@ -34,7 +38,7 @@
           &mdash; Steve Koepke's Bay Area concert guide, running since 1995 &mdash; and show you the overlap.
         </p>
         <div id="signin-box">
-          <a class="btn btn-spotify" href="/login">
+          <a class="btn btn-spotify" href="login">
             <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0m5.5 17.3c-.22.36-.68.48-1.03.26-2.83-1.73-6.4-2.12-10.6-1.16a.75.75 0 0 1-.33-1.46c4.6-1.05 8.55-.6 11.72 1.33.35.22.46.68.24 1.03m1.47-3.27a.94.94 0 0 1-1.29.31c-3.24-1.99-8.18-2.57-12.01-1.4a.94.94 0 1 1-.55-1.8c4.38-1.33 9.82-.69 13.54 1.6.44.27.58.85.31 1.29m.13-3.4C15.22 8.32 8.9 8.11 5.19 9.24a1.12 1.12 0 1 1-.65-2.15C8.8 5.8 15.78 6.05 20.13 8.63a1.12 1.12 0 1 1-1.14 1.93"/></svg>
             Sign in with Spotify
           </a>
@@ -114,6 +118,16 @@
               <option value="30" selected>Next 30 days</option>
               <option value="90">Next 90 days</option>
             </select>
+            <select id="filter-tier">
+              <option value="0" selected>Any familiarity</option>
+              <option value="15">Familiar or better</option>
+              <option value="40">Regulars &amp; favorites</option>
+              <option value="70">Favorites only</option>
+            </select>
+            <select id="sort-by">
+              <option value="date" selected>Sort by date</option>
+              <option value="affinity">Sort by how well you know them</option>
+            </select>
             <label class="check"><input type="checkbox" id="filter-soldout" /><span>Hide sold out</span></label>
           </div>
           <div id="match-list" class="shows"></div>
@@ -162,6 +176,6 @@
     </p>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

@@ -12,14 +12,14 @@ const state = {
   config: null,
 };
 
-const SOURCE_LABELS = {
-  top: "top artist",
-  following: "followed",
-  saved: "saved track",
-  albums: "saved album",
-  recent: "recently played",
-  playlist: "in a playlist",
-  history: "listening history",
+// The old per-source tags ("saved track", "in a playlist") are gone: the
+// server now sends a written-out evidence line that says the same thing with
+// the actual counts and song titles in it.
+const TIER_LABELS = {
+  favorite: "favorite",
+  regular: "regular",
+  familiar: "familiar",
+  passing: "passing",
 };
 
 // --- helpers ---------------------------------------------------------------
@@ -86,6 +86,16 @@ function renderGrouped(container, rows, rowRenderer) {
 
 // --- direct matches --------------------------------------------------------
 
+/** The songs that best explain the match -- saved first, then most played. */
+function trackEvidence(match) {
+  const saved = (match.saved_tracks || []).map((t) => ({ title: t, saved: true }));
+  const seen = new Set(saved.map((t) => t.title.toLowerCase()));
+  const played = (match.history_tracks || [])
+    .filter((t) => !seen.has(t.toLowerCase()))
+    .map((t) => ({ title: t, saved: false }));
+  return [...saved, ...played].slice(0, 5);
+}
+
 function matchRow(match) {
   const { day, rest } = fmtDate(match.date);
   const tags = [];
@@ -93,20 +103,43 @@ function matchRow(match) {
   if (match.sold_out) tags.push(`<span class="tag tag-sold">sold out</span>`);
   if (match.age) tags.push(`<span class="tag">${esc(match.age)}</span>`);
   if (match.price) tags.push(`<span class="tag">${esc(match.price)}</span>`);
-  for (const source of (match.sources || []).slice(0, 2)) {
-    tags.push(`<span class="tag tag-src">${esc(SOURCE_LABELS[source] || source)}</span>`);
+  for (const genre of (match.genres || []).slice(0, 1)) {
+    tags.push(`<span class="tag tag-src">${esc(genre)}</span>`);
   }
 
   const name = match.artist_url
     ? `<a href="${esc(match.artist_url)}" target="_blank" rel="noopener">${esc(match.band)}</a>`
     : esc(match.band);
 
+  const tier = match.tier || "passing";
+  const badge = `<span class="tier tier-${esc(tier)}" title="Familiarity ${match.affinity}/100">
+      <span class="tier-bar"><span style="width:${Math.max(4, match.affinity || 0)}%"></span></span>
+      ${esc(TIER_LABELS[tier] || tier)}
+    </span>`;
+
+  // The "why" line is the point of the whole tool: not just that a band
+  // matched, but which of your saved songs and playlists put them there.
+  const why = (match.evidence || []).length
+    ? `<div class="show-why">${esc(match.evidence.join(" · "))}</div>`
+    : "";
+
+  const tracks = trackEvidence(match);
+  const trackLine = tracks.length
+    ? `<div class="show-tracks">${tracks
+        .map((t) => `<span class="track${t.saved ? " track-saved" : ""}">${
+          t.saved ? "♥ " : ""
+        }${esc(t.title)}</span>`)
+        .join("")}</div>`
+    : "";
+
   return `
     <div class="show">
       ${artFor(match)}
       <div class="show-body">
-        <div class="show-band">${name}</div>
+        <div class="show-band">${name}${badge}</div>
         <div class="show-venue">${esc(match.venue)}</div>
+        ${why}
+        ${trackLine}
         <div class="show-tags">${tags.join("")}</div>
       </div>
       <div class="show-when"><span class="day">${esc(day)}</span>${esc(rest)}${
@@ -119,10 +152,13 @@ function applyFilters() {
   const text = $("filter-text").value.trim().toLowerCase();
   const days = Number($("filter-window").value);
   const hideSold = $("filter-soldout").checked;
+  const minAffinity = Number($("filter-tier").value);
+  const sortBy = $("sort-by").value;
 
   const rows = state.matches.filter((m) => {
     if (!withinDays(m.date, days)) return false;
     if (hideSold && m.sold_out) return false;
+    if ((m.affinity || 0) < minAffinity) return false;
     if (text) {
       const hay = `${m.band} ${m.venue}`.toLowerCase();
       if (!hay.includes(text)) return false;
@@ -140,15 +176,29 @@ function applyFilters() {
       : `<strong>No direct matches.</strong>None of the bands on The List are in your Spotify account right now. Try the adjacent-artists section below.`;
   } else {
     empty.classList.add("hidden");
-    renderGrouped($("match-list"), rows, matchRow);
+    if (sortBy === "affinity") {
+      // Ranking by familiarity and grouping by date are mutually exclusive
+      // views; when you ask for the ranking, show one flat ordered list.
+      const ranked = [...rows].sort(
+        (a, b) => (b.affinity || 0) - (a.affinity || 0) || (a.date < b.date ? -1 : 1)
+      );
+      $("match-list").innerHTML = ranked.map(matchRow).join("");
+    } else {
+      renderGrouped($("match-list"), rows, matchRow);
+    }
   }
 }
 
 function renderStats(result) {
   const bands = new Set(state.matches.map((m) => m.band)).size;
   const soon = state.matches.filter((m) => withinDays(m.date, 30)).length;
+  const faves = new Set(
+    state.matches.filter((m) => m.tier === "favorite" || m.tier === "regular")
+      .map((m) => m.band)
+  ).size;
   const cards = [
     [bands, "your bands playing"],
+    [faves, "you actually know well"],
     [state.matches.length, "total shows"],
     [soon, "in the next 30 days"],
     [result.artist_count.toLocaleString(), "artists scanned"],
@@ -248,7 +298,7 @@ async function runScan() {
   $("progress-text").textContent = "Starting…";
 
   const includePlaylists = $("opt-playlists").checked;
-  stream(`/api/scan?include_playlists=${includePlaylists}`, {
+  stream(`api/scan?include_playlists=${includePlaylists}`, {
     onProgress: (data) => {
       const count = data.artists ? ` · ${data.artists.toLocaleString()} artists` : "";
       $("progress-text").textContent = `${data.detail}${count}`;
@@ -280,7 +330,7 @@ function runAdjacent() {
 
   const provider = $("adj-provider").value;
   const days = $("adj-days").value;
-  stream(`/api/adjacent?provider=${provider}&days=${days}`, {
+  stream(`api/adjacent?provider=${provider}&days=${days}`, {
     onProgress: (data) => {
       $("adj-progress-text").textContent = data.detail;
     },
@@ -312,7 +362,7 @@ async function uploadHistory(files) {
   const form = new FormData();
   for (const file of files) form.append("files", file);
   try {
-    const response = await fetch("/api/history", { method: "POST", body: form });
+    const response = await fetch("api/history", { method: "POST", body: form });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     const top = data.top.map((t) => t.name).join(", ");
@@ -327,7 +377,7 @@ async function uploadHistory(files) {
 // --- boot ------------------------------------------------------------------
 
 async function boot() {
-  const config = await fetch("/api/config").then((r) => r.json());
+  const config = await fetch("api/config").then((r) => r.json());
   state.config = config;
 
   if (!config.signed_in) {
@@ -347,7 +397,7 @@ async function boot() {
 
   $("app").classList.remove("hidden");
 
-  fetch("/api/me")
+  fetch("api/me")
     .then((r) => r.json())
     .then((me) => {
       $("account").innerHTML = `
@@ -357,13 +407,13 @@ async function boot() {
           <button id="btn-logout">Sign out</button>
         </div>`;
       $("btn-logout").addEventListener("click", async () => {
-        await fetch("/api/logout", { method: "POST" });
-        location.href = "/";
+        await fetch("api/logout", { method: "POST" });
+        location.href = document.baseURI;
       });
     })
     .catch(() => {});
 
-  fetch("/api/list")
+  fetch("api/list")
     .then((r) => r.json())
     .then((list) => {
       const first = fmtDate(list.first_date);
@@ -378,7 +428,13 @@ async function boot() {
   $("btn-scan").addEventListener("click", runScan);
   $("btn-adjacent").addEventListener("click", runAdjacent);
   $("history-files").addEventListener("change", (event) => uploadHistory(event.target.files));
-  for (const id of ["filter-text", "filter-window", "filter-soldout"]) {
+  for (const id of [
+    "filter-text",
+    "filter-window",
+    "filter-soldout",
+    "filter-tier",
+    "sort-by",
+  ]) {
     $(id).addEventListener("input", applyFilters);
   }
 }

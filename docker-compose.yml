@@ -3,10 +3,13 @@ services:
     build: .
     image: sf-concert-compare
     ports:
+      # Behind a reverse proxy, bind to loopback only: "127.0.0.1:8000:8000".
       - "8000:8000"
     env_file:
       - .env
     environment:
       # Overrides the .env value so the redirect matches the mapped port.
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-http://127.0.0.1:8000/callback}
+      # Empty at a domain root; "/sfconcert" when proxied to a subpath.
+      BASE_PATH: ${BASE_PATH:-}
     restart: unless-stopped

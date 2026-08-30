@@ -111,6 +111,10 @@ async def cmd_compare(args: argparse.Namespace) -> int:
         extras = " ".join(x for x in (match.age, match.price, match.doors) if x)
         flag = " [SOLD OUT]" if match.sold_out else ""
         print(f"  {match.band} — {match.venue}  {extras}{flag}")
+        # Only worth printing when the input carried more than bare names,
+        # i.e. a streaming-history export rather than an artist list.
+        if match.evidence:
+            print(f"      {' · '.join(match.evidence)}")
     return 0
 
 

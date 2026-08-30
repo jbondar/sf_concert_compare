@@ -6,6 +6,7 @@ import asyncio
 import json
 import secrets
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -42,6 +43,19 @@ settings = get_settings()
 serializer = URLSafeSerializer(settings.session_secret, salt="sfcc")
 list_cache = ListCache(settings.list_ttl_seconds, settings.list_url)
 
+# Where the browser thinks we live. Empty at a domain root; "/sfconcert" when a
+# reverse proxy mounts us at a subpath. The proxy strips the prefix before we
+# see it, so routes below stay unprefixed -- this is only for URLs we hand out.
+BASE = settings.base_path
+# Confine the session cookie to our own subtree so a subpath deploy cannot
+# collide with anything else on the domain.
+COOKIE_PATH = f"{BASE}/" if BASE else "/"
+
+# Deliberately no root_path=BASE here. Starlette strips root_path from the
+# path before routing into a Mount, which 404s every /static/* request and
+# leaves the page loading with no CSS or JS. We prefix the handful of URLs we
+# emit ourselves (the <base> tag and the auth redirects), so root_path would
+# buy nothing and only break things.
 app = FastAPI(title="SF Concert Compare", docs_url=None, redoc_url=None)
 
 # Scan results are far too big for a cookie, so they live here keyed by session
@@ -74,7 +88,7 @@ def write_session(response, data: Dict) -> None:
         samesite="lax",
         secure=settings.cookie_secure,
         max_age=settings.session_ttl_seconds,
-        path="/",
+        path=COOKIE_PATH,
     )
 
 
@@ -93,9 +107,20 @@ def client_for(session: Dict) -> SpotifyClient:
 # --- Pages -------------------------------------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _index_html() -> str:
+    """index.html with the deploy's base path baked into its <base> tag.
+
+    Every other URL in the page and in app.js is relative, so setting this one
+    tag is what makes the whole frontend work at "/" and at "/sfconcert" alike.
+    """
+    raw = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return raw.replace("__BASE__", BASE)
+
+
 @app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+async def index() -> HTMLResponse:
+    return HTMLResponse(_index_html())
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -135,21 +160,22 @@ async def callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
 ):
+    home = f"{BASE}/"
     if error:
-        return RedirectResponse(f"/?error={error}", status_code=302)
+        return RedirectResponse(f"{home}?error={error}", status_code=302)
     session = read_session(request) or {}
     if not code or not state or state != session.get("state"):
-        return RedirectResponse("/?error=state_mismatch", status_code=302)
+        return RedirectResponse(f"{home}?error=state_mismatch", status_code=302)
 
     try:
         tokens = await exchange_code(
             code, settings.client_id, settings.client_secret, settings.redirect_uri
         )
     except SpotifyError as exc:
-        return RedirectResponse(f"/?error={exc}", status_code=302)
+        return RedirectResponse(f"{home}?error={exc}", status_code=302)
 
     sid = session.get("sid") or secrets.token_urlsafe(16)
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse(home, status_code=302)
     write_session(response, {"sid": sid, "tokens": tokens.to_dict()})
     return response
 
@@ -159,7 +185,7 @@ async def logout(request: Request) -> JSONResponse:
     session = read_session(request) or {}
     SCANS.pop(session.get("sid", ""), None)
     response = JSONResponse({"ok": True})
-    response.delete_cookie(COOKIE_NAME, path="/")
+    response.delete_cookie(COOKIE_NAME, path=COOKIE_PATH)
     return response
 
 

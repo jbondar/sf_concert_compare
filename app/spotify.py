@@ -19,6 +19,7 @@ import base64
 import json
 import secrets
 import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlencode
@@ -227,7 +228,15 @@ class SpotifyClient:
         return await self.get("/me")
 
 
-def _artist_from_obj(obj: Dict, source: str, plays: int = 1) -> Optional[Artist]:
+def _artist_from_obj(
+    obj: Dict, source: str, plays: int = 1, **evidence
+) -> Optional[Artist]:
+    """Build an Artist from a Spotify artist object plus whatever we know.
+
+    ``evidence`` carries the track-level detail the caller happens to have --
+    the saved song title, the playlist name, the top-artist rank. Each call
+    contributes its own slice; :func:`app.matching.index_artists` unions them.
+    """
     name = (obj or {}).get("name")
     if not name:
         return None
@@ -240,6 +249,7 @@ def _artist_from_obj(obj: Dict, source: str, plays: int = 1) -> Optional[Artist]
         url=(obj.get("external_urls") or {}).get("spotify", ""),
         sources={source},
         play_count=plays,
+        **evidence,
     )
 
 
@@ -265,8 +275,8 @@ async def scan_library(
     """
     artists: List[Artist] = []
 
-    def add(obj: Dict, source: str, plays: int = 1) -> None:
-        artist = _artist_from_obj(obj, source, plays)
+    def add(obj: Dict, source: str, plays: int = 1, **evidence) -> None:
+        artist = _artist_from_obj(obj, source, plays, **evidence)
         if artist:
             artists.append(artist)
 
@@ -278,10 +288,12 @@ async def scan_library(
     ):
         yield ScanProgress("top", f"Top artists ({label})", len(artists)), None
         try:
+            rank = 0
             async for item in client.paginate(
                 "/me/top/artists", {"limit": 50, "time_range": term}, limit_pages=4
             ):
-                add(item, "top", plays=5)
+                rank += 1
+                add(item, "top", plays=5, top_rank=rank, top_ranges=[label])
         except SpotifyError:
             # A missing scope should not sink the whole scan.
             pass
@@ -292,18 +304,25 @@ async def scan_library(
         async for item in client.paginate(
             "/me/following", {"type": "artist", "limit": 50}, limit_pages=40
         ):
-            add(item, "following", plays=4)
+            add(item, "following", plays=4, following=True)
     except SpotifyError:
         pass
 
-    # --- Saved tracks. ---
+    # --- Saved tracks: the richest signal, because we keep the song titles. ---
     yield ScanProgress("saved", "Saved tracks", len(artists)), None
     try:
         async for item in client.paginate(
             "/me/tracks", {"limit": 50}, limit_pages=100
         ):
-            for artist in ((item.get("track") or {}).get("artists") or []):
-                add(artist, "saved", plays=3)
+            track = item.get("track") or {}
+            title = track.get("name") or ""
+            for artist in track.get("artists") or []:
+                add(
+                    artist,
+                    "saved",
+                    plays=3,
+                    saved_tracks=[title] if title else [],
+                )
     except SpotifyError:
         pass
 
@@ -313,8 +332,15 @@ async def scan_library(
         async for item in client.paginate(
             "/me/albums", {"limit": 50}, limit_pages=40
         ):
-            for artist in ((item.get("album") or {}).get("artists") or []):
-                add(artist, "albums", plays=3)
+            album = item.get("album") or {}
+            title = album.get("name") or ""
+            for artist in album.get("artists") or []:
+                add(
+                    artist,
+                    "albums",
+                    plays=3,
+                    saved_albums=[title] if title else [],
+                )
     except SpotifyError:
         pass
 
@@ -324,8 +350,15 @@ async def scan_library(
         async for item in client.paginate(
             "/me/player/recently-played", {"limit": 50}, limit_pages=2
         ):
-            for artist in ((item.get("track") or {}).get("artists") or []):
-                add(artist, "recent", plays=2)
+            track = item.get("track") or {}
+            title = track.get("name") or ""
+            for artist in track.get("artists") or []:
+                add(
+                    artist,
+                    "recent",
+                    plays=2,
+                    recent_tracks=[title] if title else [],
+                )
     except SpotifyError:
         pass
 
@@ -354,12 +387,21 @@ async def scan_library(
             try:
                 async for item in client.paginate(
                     f"/playlists/{playlist['id']}/tracks",
-                    {"limit": 100, "fields": "items(track(artists(id,name))),next"},
+                    {
+                        "limit": 100,
+                        "fields": "items(track(name,artists(id,name))),next",
+                    },
                     limit_pages=20,
                 ):
                     track = item.get("track") or {}
                     for artist in track.get("artists") or []:
-                        add(artist, "playlist", plays=1)
+                        add(
+                            artist,
+                            "playlist",
+                            plays=1,
+                            playlists=[name],
+                            playlist_tracks=1,
+                        )
             except SpotifyError:
                 continue
 
@@ -420,6 +462,12 @@ _HISTORY_ARTIST_KEYS = (
     "artist_name",
 )
 
+_HISTORY_TRACK_KEYS = (
+    "master_metadata_track_name",
+    "trackName",
+    "track_name",
+)
+
 
 def parse_streaming_history(blobs: Iterable[bytes]) -> List[Artist]:
     """Parse Spotify data-export JSON into artists with real play counts.
@@ -429,6 +477,9 @@ def parse_streaming_history(blobs: Iterable[bytes]) -> List[Artist]:
     """
     counts: Dict[str, int] = {}
     display: Dict[str, str] = {}
+    # Per-artist tally of song titles, so the UI can say *what* you played and
+    # not just how often.
+    titles: Dict[str, Counter] = {}
 
     for blob in blobs:
         try:
@@ -458,7 +509,21 @@ def parse_streaming_history(blobs: Iterable[bytes]) -> List[Artist]:
             counts[key] = counts.get(key, 0) + 1
             display.setdefault(key, name)
 
+            for title_key in _HISTORY_TRACK_KEYS:
+                title = row.get(title_key)
+                if title:
+                    titles.setdefault(key, Counter())[str(title)] += 1
+                    break
+
     return [
-        Artist(name=display[key], sources={"history"}, play_count=count)
+        Artist(
+            name=display[key],
+            sources={"history"},
+            play_count=count,
+            history_plays=count,
+            # Their most-played songs, which is what you would actually
+            # recognise on a bill.
+            history_tracks=[t for t, _ in titles.get(key, Counter()).most_common(6)],
+        )
         for key, count in counts.items()
     ]

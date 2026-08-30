@@ -63,8 +63,8 @@ def _artist(name, artist_id):
     }
 
 
-def _track(*artists):
-    return {"track": {"artists": list(artists)}}
+def _track(*artists, title=""):
+    return {"track": {"name": title, "artists": list(artists)}}
 
 
 SHOWS = [
@@ -87,7 +87,10 @@ def client(monkeypatch):
     fake = FakeSpotify(
         {
             "/me/top/artists": [_artist("Le Shok", "id-leshok")],
-            "/me/tracks": [_track({"id": "id-locust", "name": "the locust"})],
+            "/me/tracks": [
+                _track({"id": "id-locust", "name": "the locust"}, title="Wet Dream War Machine"),
+                _track({"id": "id-locust", "name": "the locust"}, title="Skin Graft at 75 Miles"),
+            ],
         }
     )
     monkeypatch.setattr(main, "client_for", lambda session: fake)
@@ -165,6 +168,27 @@ def test_scan_result_carries_provenance(client):
     assert "saved" in by_band["The Locust"]["sources"]
     assert by_band["Le Shok"]["venue"] == "924 Gilman Street"
     assert by_band["Le Shok"]["date"] == "2099-01-02"
+
+
+def test_scan_result_carries_track_level_evidence(client):
+    """The whole point of the scan: not just that a band matched, but why."""
+    result = _events(client.get("/api/scan?include_playlists=false").text)[-1][1]
+    by_band = {m["band"]: m for m in result["matches"]}
+
+    locust = by_band["The Locust"]
+    assert locust["saved_track_count"] == 2
+    assert locust["saved_tracks"] == ["Wet Dream War Machine", "Skin Graft at 75 Miles"]
+    assert "2 saved songs" in locust["evidence"]
+
+    # The fake returns the same page for all three time ranges, so Le Shok is
+    # the #1 top artist in each of them.
+    leshok = by_band["Le Shok"]
+    assert leshok["top_rank"] == 1
+    assert leshok["evidence"][0] == (
+        "#1 top artist (all time, last 6 months, last 4 weeks)"
+    )
+    assert leshok["tier"] == "favorite"
+    assert leshok["affinity"] > locust["affinity"]
 
 
 def test_adjacent_requires_a_scan_first(client):

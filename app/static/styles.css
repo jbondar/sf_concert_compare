@@ -344,6 +344,55 @@ input[type="search"]:focus, select:focus { outline: 2px solid var(--accent); out
 .show-band a { color: var(--ink); }
 .show-band a:hover { color: var(--accent); }
 .show-venue { color: var(--ink-dim); font-size: 0.88rem; }
+
+/* --- Why this band matched ------------------------------------------------
+   The evidence line and the song titles under it. Kept quieter than the band
+   name so the row still scans as "who is playing", with the "how well do I
+   know them" available on a second look. */
+.show-why {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+.show-tracks {
+  display: flex;
+  gap: 0.3rem 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+.track { white-space: nowrap; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.track + .track::before { content: "·"; margin-right: 0.5rem; color: var(--line); }
+.track-saved { color: var(--ink-dim); }
+
+.tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+.tier-bar {
+  display: inline-block;
+  width: 34px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.tier-bar > span { display: block; height: 100%; background: currentColor; }
+.tier-favorite { color: var(--accent); }
+.tier-regular { color: #9ad14a; }
+.tier-familiar { color: var(--ink-dim); }
+.tier-passing { color: var(--ink-faint); }
+
 .show-tags {
   display: flex;
   gap: 0.4rem;

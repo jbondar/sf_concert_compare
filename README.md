@@ -20,8 +20,21 @@ you the overlap.
 **Direct matches** — bands on The List that are already in your Spotify. It
 unions every surface Spotify exposes: top artists across all three time ranges,
 artists you follow, saved tracks, saved albums, recently played, and the tracks
-in your playlists. Each match is tagged with where it came from, so you can see
-*why* it matched.
+in your playlists.
+
+Every match shows its evidence, so "why is this band here?" always has an
+answer:
+
+> **Militarie Gun** · *regular*
+> #4 top artist (all time, last 4 weeks) · you follow them · 2 saved songs · 5 tracks across 2 playlists
+> ♥ Do It Faster · ♥ Very High
+
+That evidence is also scored into a 0–100 **familiarity** rating and a tier —
+*favorite*, *regular*, *familiar*, *passing* — which you can sort and filter by.
+Deliberate acts weigh most: saving a song or following an artist counts for far
+more than a track drifting past in a playlist someone else made. Play counts
+are compressed logarithmically, because ten times the plays does not mean ten
+times the attachment.
 
 **Adjacent artists** *(optional, off by default)* — bands you have **never**
 listened to that sit close to your taste. This is a separate panel with its own
@@ -99,6 +112,53 @@ Everything is environment variables; see [`.env.example`](.env.example).
 | `MAX_PLAYLISTS` | no | `60` | Playlist scanning is the slow part |
 | `ADJACENCY_CANDIDATE_CAP` | no | `400` | Caps Spotify searches in genre mode |
 | `COOKIE_SECURE` | no | `false` | Set `true` when serving over HTTPS |
+| `BASE_PATH` | no | — | Set to e.g. `/sfconcert` when proxied to a subpath |
+
+---
+
+## Deploying behind a reverse proxy
+
+The app can live at a subpath (`https://example.com/sfconcert`) without a build
+step. Two things have to line up:
+
+1. **The proxy strips the prefix.** The app's own routes stay unprefixed — it
+   answers on `/`, `/api/scan`, `/static/app.js`.
+2. **`BASE_PATH` tells the app to add the prefix back** to the URLs it hands
+   the browser: the `<base>` tag in the page and the OAuth redirects. Every
+   other URL in the frontend is relative and resolves against that tag.
+
+Ready-made config is in [`deploy/`](deploy/):
+
+```bash
+# 1. App on loopback, managed by systemd
+sudo cp deploy/sfconcert.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now sfconcert
+
+# 2. Apache in front
+sudo a2enmod proxy proxy_http headers
+sudo cp deploy/apache-sfconcert.conf /etc/apache2/conf-available/
+# ...then Include it from the site's <VirtualHost *:443>
+sudo systemctl reload apache2
+```
+
+The matching `.env` on the server:
+
+```bash
+BASE_PATH=/sfconcert
+COOKIE_SECURE=true
+SPOTIFY_REDIRECT_URI=https://example.com/sfconcert/callback
+SESSION_SECRET=<a real one, or restarts sign everyone out>
+```
+
+Add that same redirect URI to the Spotify dashboard — it must match exactly.
+
+Two things bite here, and both are handled in the supplied config:
+
+- **SSE buffering.** Scan progress is a long-lived `text/event-stream`. Apache
+  needs `flushpackets=on` and gzip off, or the UI sits silent until the whole
+  scan finishes. `ProxyTimeout` also has to exceed a full scan.
+- **The trailing slash.** `/sfconcert` without one resolves relative URLs
+  against `/`, so the page loads with no CSS. The config 301s it.
 
 ---
 
@@ -181,6 +241,7 @@ app/
   adjacency.py  The optional adjacent-artist providers
   static/       Frontend (no build step, no dependencies)
 cli.py          No-auth command line
+deploy/         systemd unit and Apache subpath config
 ```
 
 ### A note on scaling

@@ -45,6 +45,17 @@ def _flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _base_path(raw: str) -> str:
+    """Normalize BASE_PATH to either "" or "/prefix" -- no trailing slash.
+
+    Served at the domain root this stays empty and nothing changes. Behind a
+    reverse proxy that mounts us at a subpath (``/sfconcert``) it becomes the
+    prefix we prepend to every URL we hand back to the browser.
+    """
+    cleaned = raw.strip().strip("/")
+    return f"/{cleaned}" if cleaned else ""
+
+
 @dataclass(frozen=True)
 class Settings:
     client_id: str
@@ -58,6 +69,7 @@ class Settings:
     adjacency_candidate_cap: int
     session_ttl_seconds: int
     cookie_secure: bool
+    base_path: str
 
     @property
     def spotify_configured(self) -> bool:
@@ -89,4 +101,5 @@ def get_settings() -> Settings:
         adjacency_candidate_cap=int(os.getenv("ADJACENCY_CANDIDATE_CAP", "400")),
         session_ttl_seconds=int(os.getenv("SESSION_TTL_SECONDS", str(12 * 60 * 60))),
         cookie_secure=_flag("COOKIE_SECURE", False),
+        base_path=_base_path(os.getenv("BASE_PATH", "")),
     )

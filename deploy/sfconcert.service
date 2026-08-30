@@ -1,0 +1,37 @@
+# systemd unit for the plain-Python deploy (no Docker).
+#
+#   sudo cp deploy/sfconcert.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sfconcert
+#   systemctl status sfconcert
+#
+# Adjust User and the two paths if the checkout does not live in /srv.
+
+[Unit]
+Description=SF Concert Compare
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+WorkingDirectory=/srv/sf_concert_compare
+EnvironmentFile=/srv/sf_concert_compare/.env
+
+# Bound to localhost on purpose: Apache is the only thing that should reach it.
+# One worker because scan results live in this process's memory.
+ExecStart=/srv/sf_concert_compare/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1
+
+Restart=on-failure
+RestartSec=5
+
+# The app writes nothing to disk, so give it nothing to write to.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
