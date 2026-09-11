@@ -121,3 +121,20 @@ def test_frontend_uses_no_root_absolute_urls():
 def test_index_html_carries_the_base_placeholder():
     text = (STATIC / "index.html").read_text(encoding="utf-8")
     assert text.count("__BASE__") == 1
+
+
+def test_index_carries_the_shared_house_bar():
+    """The top bar is the house's <house-bar> (jakebondar.com/_shared/). The
+    page stays public; the bar only shows a house account to someone already
+    signed in to jakebondar.com. The List and the Spotify account are this
+    app's own items inside it."""
+    text = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert "https://jakebondar.com/_shared/house-bar.js" in text
+    # The real element, not the comment above it that also names it.
+    match = re.search(r"<house-bar\s([^>]*)>(.*?)</house-bar>", text, re.S)
+    assert match, "no <house-bar> element"
+    attrs, items = match.groups()
+    assert re.search(r"(^|\s)account(\s|$)", attrs)
+    assert "foopee.com/punk/the-list" in items
+    assert '<div id="account"></div>' in items
+    assert 'class="topbar-inner"' not in text
