@@ -43,34 +43,28 @@ a:hover { text-decoration: underline; }
 
 /* --- Top bar --- */
 
+/* The top bar is the house's shared <house-bar> (jakebondar.com/_shared/),
+   kept sticky and translucent, and handed this page's own tokens. */
 .topbar {
+  display: block;
   border-bottom: 1px solid var(--line);
   background: rgba(12, 13, 16, 0.85);
   backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 20;
+  /* Lines the bar's contents up with .wrap: the same 1080px column. */
+  padding: 0.85rem max(1.25rem, calc((100% - 1080px) / 2));
+  --house-bar-fg: var(--ink);
+  --house-bar-muted: var(--ink-dim);
+  --house-bar-line: var(--line);
+  --house-bar-accent: var(--accent);
+  --house-bar-accent-ink: var(--accent-ink);
+  --house-bar-panel-bg: var(--bg-raise);
 }
-.topbar-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 0;
-}
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  color: var(--ink);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.brand:hover { text-decoration: none; }
-.brand-mark { color: var(--accent); font-size: 0.8rem; }
-.brand-text em { font-style: normal; color: var(--ink-dim); font-weight: 500; }
-.topbar-right { display: flex; align-items: center; gap: 1rem; }
-.ghost-link { color: var(--ink-dim); font-size: 0.85rem; }
+.topbar:not(:defined) { min-height: 2.25rem; }
+/* A plain link, not the bar's outlined default item. */
+.ghost-link { color: var(--ink-dim); font-size: 0.85rem; border: 0; padding: 0; }
 
 .account {
   display: inline-flex;
